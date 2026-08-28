@@ -1,163 +1,227 @@
-import streamlit as st
+"""
+S.H.I.E.L.D. — Adaptive Voice-Preserving ANC
+Streamlit dashboard: live simulation of the final prototype (main playbook §5).
+Owner: Software Engineering. Uses src/enhance.py, src/nlms_filter.py,
+src/regime_detector.py, src/metrics.py — see main playbook §5.1.4 for those.
+"""
+
 import numpy as np
-import io
+import librosa
 import soundfile as sf
+import streamlit as st
+import matplotlib.pyplot as plt
 
-# -------------------------------------------------------------
-# CONSTANTS & CONFIGURATION
-# -------------------------------------------------------------
-SAMPLE_RATE = 48000  # DeepFilterNet2 native processing rate
-DURATION = 4.0       # Standard model chunk length in seconds
-NUM_SAMPLES = int(SAMPLE_RATE * DURATION)
+from src.enhance import clean_file
+from src.nlms_filter import NLMSFilter
+from src.regime_detector import classify_regime
+from src.metrics import compute_metrics
 
-# -------------------------------------------------------------
-# STREAMLIT PAGE SETUP
-# -------------------------------------------------------------
-st.set_page_config(
-    page_title="DeepFilterNet2 Audio Evaluation Lab",
-    page_icon="🎙️",
-    layout="wide"
-)
+st.set_page_config(page_title="S.H.I.E.L.D.", layout="wide")
 
-st.title("🎙️ DeepFilterNet2 Audio Evaluation Lab")
-st.markdown(
-    "Synthesize complex acoustic environments using **LibriSpeech**, **UrbanSound8K**, "
-    "and **DEMAND**, then run deep filtering metrics in real-time."
-)
+# ---------------------------------------------------------------------------
+# Basic auth gate — Cybersecurity owns this (see individual action plans, Day 2).
+# TODO(Cyber): swap DASHBOARD_PASSWORD for st.secrets["password"] before this
+# goes anywhere public. Fine as a hardcoded string for now.
+# ---------------------------------------------------------------------------
+DASHBOARD_PASSWORD = "shield2026"
 
-# -------------------------------------------------------------
-# HELPER FUNCTIONS (MOCK DATA GENERATION)
-# -------------------------------------------------------------
-def generate_mock_signal(signal_type, frequency=440.0):
-    """Generates synthetic audio signals representing different dataset components."""
-    t = np.linspace(0, DURATION, NUM_SAMPLES, endpoint=False)
-    
-    if signal_type == "speech":
-        # Simulating speech variations using an amplitude-modulated sine wave
-        mod = 0.5 * (1.0 + np.sin(2 * np.pi * 1.5 * t))
-        signal = np.sin(2 * np.pi * frequency * t) * mod
-    elif signal_type == "transient":
-        # Simulating an UrbanSound8K burst (e.g., dog bark or car horn)
-        signal = np.zeros_like(t)
-        start, end = int(NUM_SAMPLES * 0.3), int(NUM_SAMPLES * 0.5)
-        signal[start:end] = np.sin(2 * np.pi * 880.0 * t[start:end]) * 0.6
-    elif signal_type == "ambient":
-        # Simulating a DEMAND stationary room texture (pink/white noise)
-        signal = np.random.normal(0, 0.15, NUM_SAMPLES)
-    else:
-        signal = np.zeros_like(t)
-        
-    return signal.astype(np.float32)
+def check_password():
+    if st.session_state.get("authed"):
+        return True
+    pw = st.text_input("Dashboard password", type="password")
+    if pw == DASHBOARD_PASSWORD:
+        st.session_state["authed"] = True
+        st.rerun()
+    elif pw:
+        st.error("Wrong password")
+    return False
 
-def to_audio_bytes(audio_array, sr=SAMPLE_RATE):
-    """Converts a NumPy floating point array into playable WAV bytes."""
-    virtual_file = io.BytesIO()
-    sf.write(virtual_file, audio_array, sr, format='WAV', subtype='PCM_16')
-    return virtual_file.getvalue()
+if not check_password():
+    st.stop()
 
-# -------------------------------------------------------------
-# SIDEBAR CONTROLS (DATASET & MODEL CONFIGURATION)
-# -------------------------------------------------------------
-st.sidebar.header("🎛️ Pipeline Settings")
+# ---------------------------------------------------------------------------
+# Scenario presets — the "tactile mission-mode dial" (differentiator #6),
+# simulated as a dropdown. Each preset biases the regime detector exactly like
+# the physical rotary dial would (main playbook §5.1.6).
+# ---------------------------------------------------------------------------
+SCENARIOS = {
+    "Vehicle Engine":   {"impulsive_thresh": 7.0, "flatness_thresh": 0.35},
+    "Gunfire Burst":    {"impulsive_thresh": 4.5, "flatness_thresh": 0.30},
+    "Helicopter Rotor": {"impulsive_thresh": 6.5, "flatness_thresh": 0.32},
+    "Mixed / Unknown":  {"impulsive_thresh": 6.0, "flatness_thresh": 0.30},
+}
 
-st.sidebar.subheader("Dataset Mix Ratios")
-speech_file = st.sidebar.selectbox(
-    "LibriSpeech Target Voice", 
-    ["speaker_1082_clean.wav", "speaker_4502_clean.wav", "Upload Custom Audio..."]
-)
+st.title("S.H.I.E.L.D. — Adaptive Voice-Preserving ANC")
+st.caption("Live simulation of the final prototype · SIH26052")
 
-urban_noise = st.sidebar.selectbox(
-    "UrbanSound8K (Transient)", 
-    ["01_dog_barking.wav", "02_car_horn.wav", "03_jackhammer.wav", "None"]
-)
+with st.sidebar:
+    st.header("Controls")
+    scenario = st.selectbox("Mission mode (simulated dial)", list(SCENARIOS.keys()))
+    bypass = st.checkbox("Bypass — simulate power/compute loss", value=False)
+    st.divider()
+    st.subheader("Input source")
+    input_mode = st.radio("Choose input", ["Upload a clip", "Record live (mic)", "Use a bundled preset"])
 
-demand_noise = st.sidebar.selectbox(
-    "DEMAND (Ambient Environment)", 
-    ["DKITCHEN_16k.wav", "OOFFICE_16k.wav", "PSTATION_16k.wav", "None"]
-)
+# ---------------------------------------------------------------------------
+# Get the noisy input as a numpy array + sample rate
+# ---------------------------------------------------------------------------
+noisy_audio, sr = None, None
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("Acoustic Mixing Parameters")
-target_snr = st.sidebar.slider("Global Target SNR (dB)", min_value=-10, max_value=25, value=5, step=1)
-transient_gain = st.sidebar.slider("UrbanSound8K Scale Factor (α)", 0.0, 1.5, 0.7, 0.1)
-ambient_gain = st.sidebar.slider("DEMAND Scale Factor (β)", 0.0, 1.5, 0.4, 0.1)
+if input_mode == "Upload a clip":
+    uploaded = st.file_uploader("Noisy .wav clip", type=["wav"])
+    if uploaded:
+        noisy_audio, sr = librosa.load(uploaded, sr=None, mono=True)
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("DeepFilterNet2 Engine")
-post_filter_attenuation = st.sidebar.slider("Max Attenuation (dB)", 0, 40, 20, 5)
-enable_erb = st.sidebar.checkbox("Stage 1: Enforce ERB Envelope", value=True)
-enable_df = st.sidebar.checkbox("Stage 2: Enforce Deep Filtering", value=True)
+elif input_mode == "Record live (mic)":
+    recording = st.audio_input("Speak now, with noise playing in the room")
+    if recording:
+        noisy_audio, sr = librosa.load(recording, sr=None, mono=True)
 
-# -------------------------------------------------------------
-# MAIN APP BODY: PROCESSING PIPELINE
-# -------------------------------------------------------------
-
-# 1. Synthesize the incoming source signals
-clean_speech = generate_mock_signal("speech", frequency=350.0)
-transient_src = generate_mock_signal("transient") if urban_noise != "None" else np.zeros(NUM_SAMPLES)
-ambient_src = generate_mock_signal("ambient") if demand_noise != "None" else np.zeros(NUM_SAMPLES)
-
-# 2. Compute the mixing metrics (Simulating target SNR adjustments)
-# Mathematically scale relative to speech power
-speech_power = np.mean(clean_speech ** 2) + 1e-8
-noise_raw = (transient_src * transient_gain) + (ambient_src * ambient_gain)
-noise_raw_power = np.mean(noise_raw ** 2) + 1e-8
-
-snr_factor = 10 ** (target_snr / 10.0)
-scale = np.sqrt(speech_power / (noise_raw_power * snr_factor))
-scaled_noise = noise_raw * scale
-
-# Construct final corrupted composite wave
-noisy_mixture = clean_speech + scaled_noise
-# Peak check normalization to prevent clipping artifacts
-max_val = np.max(np.abs(noisy_mixture))
-if max_val > 0.95:
-    noisy_mixture = (noisy_mixture / max_val) * 0.95
-
-# 3. Simulate DeepFilterNet2 inference filtering block
-if not enable_erb and not enable_df:
-    enhanced_output = noisy_mixture.copy()  # No filtering done
-elif enable_erb and not enable_df:
-    enhanced_output = clean_speech + (scaled_noise * 0.4)  # Rough background reduction
 else:
-    # Full Stage 1 + Stage 2 processing reconstruction simulation
-    enhanced_output = clean_speech + (scaled_noise * 0.08)
+    preset_path = f"data/mixed/{scenario.replace(' ', '_')}.wav"
+    try:
+        noisy_audio, sr = librosa.load(preset_path, sr=None, mono=True)
+        st.info(f"Loaded preset: {preset_path}")
+    except (FileNotFoundError, RuntimeError):
+        st.warning(f"No preset at {preset_path} yet — ask CS Core 1, or upload/record your own clip instead.")
 
-# -------------------------------------------------------------
-# INTERACTIVE WORKSPACE RENDER
-# -------------------------------------------------------------
-col1, col2 = st.columns(2)
+# Optional simulated second channel — differentiator #2 (dual-channel fusion),
+# demoed per §5.1.6 since we don't have a real throat mic yet. App still runs
+# fine without it (AI-only path), it just skips the classical-filter blend.
+st.sidebar.divider()
+ref_upload = st.sidebar.file_uploader("Optional: reference/throat-mic channel (.wav)", type=["wav"], key="ref")
+clean_reference = st.sidebar.file_uploader("Optional: ground-truth clean speech, for scoring", type=["wav"], key="clean")
 
-with col1:
-    st.header("📥 Raw Environment Input")
-    st.markdown("**Combined Noisy Mixture (LibriSpeech + Noise Sources)**")
-    st.audio(to_audio_bytes(noisy_mixture), format="audio/wav")
-    
-    with st.expander("Examine Source Mix Details"):
-        st.caption("Clean Target Speech component:")
-        st.audio(to_audio_bytes(clean_speech), format="audio/wav")
-        st.caption("Combined Noise component (Urban + DEMAND scaled):")
-        st.audio(to_audio_bytes(scaled_noise), format="audio/wav")
+run = st.button("Run S.H.I.E.L.D.", type="primary", disabled=(noisy_audio is None))
 
-with col2:
-    st.header("📤 DeepFilterNet2 Output")
-    st.markdown("**Processed Enhanced Speech Result**")
-    st.audio(to_audio_bytes(enhanced_output), format="audio/wav")
-    
-    # Render interactive diagnostic model metrics
-    st.subheader("📊 Engine Metrics (Simulation)")
-    m_col1, m_col2, m_col3 = st.columns(3)
-    
-    # Simulating dynamic improvements based on architecture settings
-    pesq_gain = 1.4 if (enable_df and enable_erb) else (0.5 if enable_erb else 0.0)
-    rtf_val = 0.041 if enable_df else 0.012
-    
-    m_col1.metric(label="Simulated PESQ Score", value=f"{2.1 + pesq_gain:.2f}", delta=f"+{pesq_gain:.2f}" if pesq_gain > 0 else None)
-    m_col2.metric(label="Real-Time Factor (RTF)", value=f"{rtf_val} RTF", delta="CPU Safe", delta_color="normal")
-    m_col3.metric(label="Processing Latency", value="20.0 ms", delta="Fixed Lookahead")
 
-st.markdown("---")
-st.info(
-    "💡 **Next Steps for integration:** Replace the `generate_mock_signal` functions with genuine data loading "
-    "from your local directories, and drop your `df.enhance` model call inside the processing section."
-)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def match_length(audio, target_len):
+    if len(audio) >= target_len:
+        return audio[:target_len]
+    return np.pad(audio, (0, target_len - len(audio)))
+
+
+def build_mode_trace(audio, sr, thresholds, frame_ms=20):
+    frame_len = int(sr * frame_ms / 1000)
+    return [
+        classify_regime(audio[start:start + frame_len], **thresholds)
+        for start in range(0, len(audio) - frame_len, frame_len)
+    ]
+
+
+def regime_aware_blend(noisy, ai_cleaned, ref, sr, thresholds, frame_ms=20):
+    """Where a frame is classified steady-hum, use the fast NLMS path;
+    everywhere else, use the AI path. This is the regime-aware architecture
+    from main playbook §2.1/§2.3, computed frame-by-frame in one pass since
+    this is a simulation, not the streaming final firmware."""
+    frame_len = int(sr * frame_ms / 1000)
+    nlms = NLMSFilter()
+    out = np.copy(ai_cleaned)
+    for start in range(0, len(noisy) - frame_len, frame_len):
+        frame = noisy[start:start + frame_len]
+        if classify_regime(frame, **thresholds) == "steady-hum":
+            ref_frame = ref[start:start + frame_len] if ref is not None else frame
+            out[start:start + frame_len] = nlms.process(ref_frame, frame)
+    return out
+
+
+def estimate_relative_exposure_db(audio, sr, frame_ms=100):
+    """Rolling relative loudness in dBFS (relative to digital full-scale — NOT
+    calibrated dB SPL; a laptop/phone mic isn't a sound-level meter). This is a
+    stand-in for ECE 2's exposure telemetry (individual action plan, Day 2) —
+    good enough to demo the concept, not a real safety measurement yet."""
+    frame_len = int(sr * frame_ms / 1000)
+    levels = []
+    for start in range(0, len(audio) - frame_len, frame_len):
+        rms = np.sqrt(np.mean(audio[start:start + frame_len] ** 2) + 1e-12)
+        levels.append(20 * np.log10(rms + 1e-12))
+    return levels
+
+
+# ---------------------------------------------------------------------------
+# Processing pipeline
+# ---------------------------------------------------------------------------
+if run and noisy_audio is not None:
+    mode_trace = None
+
+    if bypass:
+        st.warning(
+            "BYPASS ACTIVE — playing raw, unprocessed audio. This simulates the "
+            "deterministic hardware failsafe (differentiator #3): zero software "
+            "in the loop, mic routed straight to output."
+        )
+        cleaned_audio = noisy_audio
+
+    else:
+        with st.spinner("Running the pipeline — regime detection, then AI/classical routing..."):
+            # 1. AI path — always computed, it's the safety net for the hard cases
+            sf.write("_tmp_noisy.wav", noisy_audio, sr)
+            clean_file("_tmp_noisy.wav", "_tmp_cleaned.wav")
+            ai_cleaned, _ = librosa.load("_tmp_cleaned.wav", sr=sr)
+            ai_cleaned = match_length(ai_cleaned, len(noisy_audio))
+
+            # 2. Regime trace, for the chart
+            thresholds = SCENARIOS[scenario]
+            mode_trace = build_mode_trace(noisy_audio, sr, thresholds)
+
+            # 3. Blend in the classical filter wherever the reference channel
+            #    says "steady-hum" — only possible if a reference was provided
+            if ref_upload is not None:
+                ref_audio, _ = librosa.load(ref_upload, sr=sr, mono=True)
+                ref_audio = match_length(ref_audio, len(noisy_audio))
+                cleaned_audio = regime_aware_blend(noisy_audio, ai_cleaned, ref_audio, sr, thresholds)
+                st.caption("Regime-aware blend active: NLMS on steady-hum frames, DeepFilterNet2 elsewhere.")
+            else:
+                cleaned_audio = ai_cleaned
+                st.caption(
+                    "No reference/throat-mic channel provided — showing AI-only "
+                    "enhancement. Upload one in the sidebar to see the full "
+                    "regime-aware blend."
+                )
+
+    # -----------------------------------------------------------------------
+    # Display
+    # -----------------------------------------------------------------------
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Before")
+        sf.write("_tmp_before.wav", noisy_audio, sr)
+        st.audio("_tmp_before.wav")
+    with col2:
+        st.subheader("After")
+        sf.write("_tmp_after.wav", cleaned_audio, sr)
+        st.audio("_tmp_after.wav")
+
+    fig, ax = plt.subplots(2, 1, figsize=(10, 4), sharex=True)
+    ax[0].plot(noisy_audio, linewidth=0.5)
+    ax[0].set_title("Before — waveform")
+    ax[1].plot(cleaned_audio, linewidth=0.5, color="green")
+    ax[1].set_title("After — waveform")
+    st.pyplot(fig)
+
+    if mode_trace:
+        label_to_num = {"steady-hum": 0, "mixed": 1, "impulsive": 2}
+        st.subheader("Regime detector — which path handled each moment")
+        st.line_chart([label_to_num[m] for m in mode_trace])
+        st.caption("0 = classical NLMS path · 1 = mixed/AI path · 2 = impulsive/AI path")
+
+    st.subheader("Relative loudness over time (exposure telemetry stand-in)")
+    st.line_chart(estimate_relative_exposure_db(noisy_audio, sr))
+    st.caption("dBFS, relative to digital full scale — not a calibrated SPL reading. ECE 2 owns the real version.")
+
+    if clean_reference is not None and not bypass:
+        clean_ref_audio, _ = librosa.load(clean_reference, sr=sr, mono=True)
+        clean_ref_audio = match_length(clean_ref_audio, len(cleaned_audio))
+        metrics = compute_metrics(clean_ref_audio, cleaned_audio, sr)
+        m1, m2, m3 = st.columns(3)
+        m1.metric("SNR improvement", f"{metrics['snr']:.1f} dB")
+        m2.metric("STOI", f"{metrics['stoi']:.2f}")
+        m3.metric("PESQ", f"{metrics['pesq']:.2f}")
+    elif not bypass:
+        st.info("Upload a ground-truth clean-speech reference in the sidebar to see real PESQ/STOI/SNR numbers.")
+
+elif noisy_audio is None:
+    st.info("Choose an input source in the sidebar, then press Run S.H.I.E.L.D..")
