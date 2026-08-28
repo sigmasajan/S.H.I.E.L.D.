@@ -1,1 +1,9 @@
-
+numpy
+librosa
+soundfile
+scipy
+matplotlib
+streamlit
+pesq
+pystoi
+deepfilternet
