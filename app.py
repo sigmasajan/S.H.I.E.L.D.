@@ -78,7 +78,7 @@ elif input_mode == "Record live (mic)":
         noisy_audio, sr = librosa.load(recording, sr=None, mono=True)
 
 else:
-    preset_path = f"data/mixed/{scenario.replace(' ', '_')}.wav"
+    preset_path = f"data/mixed/{scenario.replace(' ', '_').replace('/', '-')}.wav"
     try:
         noisy_audio, sr = librosa.load(preset_path, sr=None, mono=True)
         st.info(f"Loaded preset: {preset_path}")
