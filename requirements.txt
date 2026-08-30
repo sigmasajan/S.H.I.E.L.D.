@@ -1,9 +1,68 @@
-numpy
-librosa
-soundfile
-scipy
-matplotlib
-streamlit
-pesq
-pystoi
-deepfilternet
+# S.H.I.E.L.D. — all project dependencies, one file
+#   pip install -r requirements.txt
+#
+# Every package below was actually installed together and import-tested on
+# Python 3.12 (27 Aug 2026) — this is a verified working combination, not a
+# list assembled from memory. Organized by which module/person uses each
+# package; see the main playbook §4/§5 for what each piece does.
+
+# --- numpy/scipy/audio I/O — mix_generator.py, nlms_filter.py, metrics.py ---
+numpy==1.26.4          # pinned <2.0 on purpose: DeepFilterNet requires numpy<2.0
+scipy==1.11.4          # pinned to match numpy<2.0 (scipy>=1.13 needs numpy>=2.0)
+librosa==0.10.2.post1  # pinned to match numpy<2.0 (librosa 1.x needs numpy>=2.1)
+soundfile==0.12.1
+
+# --- the AI model — enhance.py ---
+DeepFilterNet==0.5.6   # pulls in DeepFilterLib automatically
+
+# torch isn't listed as a hard dependency by DeepFilterNet's own metadata, but
+# `from df.enhance import ...` (used in enhance.py) imports it directly at
+# runtime — app.py will not start without it. Only skip these two lines if
+# you rewrite enhance.py to shell out to the precompiled `deep-filter` binary
+# instead of the Python API (main playbook §5.1.1) — that path needs zero
+# Python ML dependencies at all.
+torch
+torchaudio
+# Slow install, or no good GPU? Use the smaller CPU-only build instead of the
+# two lines above:
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# --- metrics — metrics.py (CS Core 1) ---
+pesq==0.0.4
+pystoi==0.3.3           # pinned <0.4 — matches DeepFilterNet's own internal eval pin
+
+# --- live mic pipeline — regime_detector.py, nlms_filter.py ---
+sounddevice==0.5.6
+# Linux only: also run `sudo apt install libportaudio2` — sounddevice needs this
+# system library and pip cannot install it for you. Not needed on Windows/Mac.
+webrtcvad==2.0.10
+setuptools<81           # webrtcvad imports the old pkg_resources API; setuptools>=81
+                         # removed it and import will fail without this pin
+
+# --- dashboard — app.py ---
+streamlit==1.62.0
+matplotlib==3.11.1
+
+# --- security — auth + encryption ---
+cryptography==50.0.1
+
+# ==============================================================================
+# FINE-TUNING ONLY (CS Core 1's stretch goal) — commented out on purpose.
+# Running app.py / the dashboard needs NONE of this. Leave it commented unless
+# you're training a custom checkpoint.
+#
+# REAL GOTCHA, found by actually testing this: `DeepFilterNet[train]` pulls in
+# `deepfilterdataloader`, a Rust package that needs the HDF5 C library already
+# present on your SYSTEM (pip cannot install this for you) just to build. If
+# you uncomment the two lines below without doing this first, the install
+# fails with a Rust/cargo error — that is not a broken Python setup, it's a
+# missing system library. Install it first:
+#   Ubuntu/Debian:  sudo apt install libhdf5-dev
+#   macOS:          brew install hdf5
+#   Windows:        skip all of this — use Google Colab for fine-tuning instead
+#
+# To enable: install the system library above, then delete the leading `# `
+# from the two lines below and re-run `pip install -r requirements.txt`.
+# ==============================================================================
+# DeepFilterNet[train]==0.5.6
+# h5py
