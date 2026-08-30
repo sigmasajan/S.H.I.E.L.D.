@@ -78,12 +78,13 @@ elif input_mode == "Record live (mic)":
         noisy_audio, sr = librosa.load(recording, sr=None, mono=True)
 
 else:
-    preset_path = f"data/mixed/{scenario.replace(' ', '_').replace('/', '-')}.wav"
-    try:
-        noisy_audio, sr = librosa.load(preset_path, sr=None, mono=True)
-        st.info(f"Loaded preset: {preset_path}")
-    except (FileNotFoundError, RuntimeError):
-        st.warning(f"No preset at {preset_path} yet — ask CS Core 1, or upload/record your own clip instead.")
+    import glob
+    preset_files = sorted(glob.glob("data/mixed/*.wav"))
+    if preset_files:
+        chosen_preset = st.selectbox("Preset file", preset_files)
+        noisy_audio, sr = librosa.load(chosen_preset, sr=None, mono=True)
+    else:
+        st.warning("No .wav files in data/mixed/ yet — ask CS Core 1, or upload/record your own clip instead.")
 
 # Optional simulated second channel — differentiator #2 (dual-channel fusion),
 # demoed per §5.1.6 since we don't have a real throat mic yet. App still runs
