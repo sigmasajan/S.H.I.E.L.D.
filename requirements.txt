@@ -11,6 +11,7 @@ numpy==1.26.4          # pinned <2.0 on purpose: DeepFilterNet requires numpy<2.
 scipy==1.11.4          # pinned to match numpy<2.0 (scipy>=1.13 needs numpy>=2.0)
 librosa==0.10.2.post1  # pinned to match numpy<2.0 (librosa 1.x needs numpy>=2.1)
 soundfile==0.12.1
+datasets
 
 # --- the AI model — enhance.py ---
 DeepFilterNet==0.5.6   # pulls in DeepFilterLib automatically
