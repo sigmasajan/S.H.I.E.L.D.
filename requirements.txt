@@ -22,8 +22,8 @@ DeepFilterNet==0.5.6   # pulls in DeepFilterLib automatically
 # you rewrite enhance.py to shell out to the precompiled `deep-filter` binary
 # instead of the Python API (main playbook §5.1.1) — that path needs zero
 # Python ML dependencies at all.
-torch
-torchaudio
+torch==2.1.0
+torchaudio==2.1.0
 # Slow install, or no good GPU? Use the smaller CPU-only build instead of the
 # two lines above:
 #   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
