@@ -220,6 +220,9 @@ __marimo__/
 # Block encryption keys from being committed
 *.key
 
+# App runtime temp files
+_tmp_*.wav
+
 # macOS
 .DS_Store
 */.DS_Store
