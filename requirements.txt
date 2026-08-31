@@ -42,7 +42,7 @@ setuptools<81           # webrtcvad imports the old pkg_resources API; setuptool
 
 # --- dashboard — app.py ---
 streamlit==1.62.0
-matplotlib==3.11.1
+matplotlib==3.10.9
 
 # --- security — auth + encryption ---
 cryptography==50.0.1
