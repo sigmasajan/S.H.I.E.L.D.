@@ -45,10 +45,13 @@ if not check_password():
 # the physical rotary dial would (main playbook §5.1.6).
 # ---------------------------------------------------------------------------
 SCENARIOS = {
-    "Vehicle Engine":   {"impulsive_thresh": 7.0, "flatness_thresh": 0.35},
-    "Gunfire Burst":    {"impulsive_thresh": 4.5, "flatness_thresh": 0.30},
-    "Helicopter Rotor": {"impulsive_thresh": 6.5, "flatness_thresh": 0.32},
-    "Mixed / Unknown":  {"impulsive_thresh": 6.0, "flatness_thresh": 0.30},
+    # flatness_thresh values recalibrated against scripts/generate_sample_data.py
+    # output — see src/regime_detector.py comment. Re-check once real recordings
+    # replace the sample dataset.
+    "Vehicle Engine":   {"impulsive_thresh": 7.0, "flatness_thresh": 0.70},
+    "Gunfire Burst":    {"impulsive_thresh": 4.5, "flatness_thresh": 0.65},
+    "Helicopter Rotor": {"impulsive_thresh": 6.5, "flatness_thresh": 0.65},
+    "Mixed / Unknown":  {"impulsive_thresh": 6.0, "flatness_thresh": 0.65},
 }
 
 st.title("S.H.I.E.L.D. — Adaptive Voice-Preserving ANC")
