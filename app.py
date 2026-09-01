@@ -1,8 +1,8 @@
 """
 S.H.I.E.L.D. — Adaptive Voice-Preserving ANC
-Streamlit dashboard: live simulation of the final prototype (main playbook §5).
-Owner: Software Engineering. Uses src/enhance.py, src/nlms_filter.py,
-src/regime_detector.py, src/metrics.py — see main playbook §5.1.4 for those.
+Streamlit dashboard: live simulation of the final prototype.
+Uses src/enhance.py, src/nlms_filter.py,
+src/regime_detector.py, src/metrics.py.
 """
 
 import numpy as np
@@ -19,9 +19,7 @@ from src.metrics import compute_metrics
 st.set_page_config(page_title="S.H.I.E.L.D.", layout="wide")
 
 # ---------------------------------------------------------------------------
-# Basic auth gate — Cybersecurity owns this (see individual action plans, Day 2).
-# TODO(Cyber): swap DASHBOARD_PASSWORD for st.secrets["password"] before this
-# goes anywhere public. Fine as a hardcoded string for now.
+# Basic auth gate 
 # ---------------------------------------------------------------------------
 DASHBOARD_PASSWORD = "shield2026"
 
@@ -40,9 +38,9 @@ if not check_password():
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Scenario presets — the "tactile mission-mode dial" (differentiator #6),
+# Scenario presets — the "tactile mission-mode dial",
 # simulated as a dropdown. Each preset biases the regime detector exactly like
-# the physical rotary dial would (main playbook §5.1.6).
+# the physical rotary dial would.
 # ---------------------------------------------------------------------------
 SCENARIOS = {
     # flatness_thresh values recalibrated against scripts/generate_sample_data.py
@@ -89,8 +87,8 @@ else:
     else:
         st.warning("No .wav files in data/mixed/ yet — ask CS Core 1, or upload/record your own clip instead.")
 
-# Optional simulated second channel — differentiator #2 (dual-channel fusion),
-# demoed per §5.1.6 since we don't have a real throat mic yet. App still runs
+# Optional simulated second channel — (dual-channel fusion),
+# since we don't have a real throat mic yet. App still runs
 # fine without it (AI-only path), it just skips the classical-filter blend.
 st.sidebar.divider()
 ref_upload = st.sidebar.file_uploader("Optional: reference/throat-mic channel (.wav)", type=["wav"], key="ref")
