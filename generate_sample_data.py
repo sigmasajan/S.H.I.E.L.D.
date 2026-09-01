@@ -1,8 +1,6 @@
 """
 Generates a small SAMPLE dataset entirely locally — no downloads, no
-LibriSpeech, no UrbanSound8K. Use this to get the app running today; swap in
-real recordings later without changing any other code (mix_generator.py,
-app.py, etc. don't care where the audio came from).
+LibriSpeech, no UrbanSound8K.
 
 Run once:  python scripts/generate_sample_data.py
 """
