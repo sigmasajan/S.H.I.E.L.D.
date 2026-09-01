@@ -2,9 +2,9 @@
 #   pip install -r requirements.txt
 #
 # Every package below was actually installed together and import-tested on
-# Python 3.12 (27 Aug 2026) — this is a verified working combination, not a
+# Python 3.12 — this is a verified working combination, not a
 # list assembled from memory. Organized by which module/person uses each
-# package; see the main playbook §4/§5 for what each piece does.
+# package.
 
 # --- numpy/scipy/audio I/O — mix_generator.py, nlms_filter.py, metrics.py ---
 numpy==1.26.4          # pinned <2.0 on purpose: DeepFilterNet requires numpy<2.0
@@ -20,7 +20,7 @@ DeepFilterNet==0.5.6   # pulls in DeepFilterLib automatically
 # `from df.enhance import ...` (used in enhance.py) imports it directly at
 # runtime — app.py will not start without it. Only skip these two lines if
 # you rewrite enhance.py to shell out to the precompiled `deep-filter` binary
-# instead of the Python API (main playbook §5.1.1) — that path needs zero
+# instead of the Python API — that path needs zero
 # Python ML dependencies at all.
 torch==2.1.0
 torchaudio==2.1.0
@@ -48,13 +48,12 @@ matplotlib==3.10.9
 cryptography==50.0.1
 
 # ==============================================================================
-# FINE-TUNING ONLY (CS Core 1's stretch goal) — commented out on purpose.
-# Running app.py / the dashboard needs NONE of this. Leave it commented unless
-# you're training a custom checkpoint.
+# FINE-TUNING ONLY — commented out on purpose.
+# Running app.py / the dashboard needs NONE of this. 
 #
 # REAL GOTCHA, found by actually testing this: `DeepFilterNet[train]` pulls in
 # `deepfilterdataloader`, a Rust package that needs the HDF5 C library already
-# present on your SYSTEM (pip cannot install this for you) just to build. If
+# present on your SYSTEM (pip cannot install this) just to build. If
 # you uncomment the two lines below without doing this first, the install
 # fails with a Rust/cargo error — that is not a broken Python setup, it's a
 # missing system library. Install it first:
