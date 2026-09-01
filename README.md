@@ -21,19 +21,36 @@ Default dashboard password is `shield2026` — it's in `app.py`
 
 ```
 S.H.I.E.L.D./
-├── app.py                    # the live dashboard — Software Eng.
-├── requirements.txt          # single pinned dependency list, verified installable
+├── .gitignore
+├── .streamlit/
+│   └── config.toml        # headless=true, so `streamlit run` doesn't prompt on shared machines
+├── LICENSE
 ├── README.md
-├── src/
-│   ├── enhance.py            # DeepFilterNet2 wrapper (the AI model)      
-│   ├── mix_generator.py      # builds noisy-clean pairs at controlled SNR 
-│   ├── metrics.py            # PESQ / STOI / SNR scoring                  
-│   ├── nlms_filter.py        # classical adaptive filter, steady-hum     
-│   └── regime_detector.py    # classifies each frame's noise type        
-└── data/
-    ├── clean/                # clean speech clips (LibriSpeech/VCTK subset)
-    ├── noise/                # noise clips (UrbanSound8K gun_shot/engine_idling, DEMAND)
-    └── mixed/                # generated noisy-clean pairs (git-ignore this, it's big)
+├── app.py                 # the live dashboard
+├── generate_sample_data.py    # sample-data generator — lives at repo root, not scripts/
+├── pyproject.toml         # pins Python to >=3.12,<3.13 — prevents the 3.14 build/import crisis
+├── requirements.txt
+├── data/
+│   ├── clean/              # 4 sample speech clips
+│   │   ├── speech_00.wav
+│   │   ├── speech_01.wav
+│   │   ├── speech_02.wav
+│   │   └── speech_03.wav
+│   ├── noise/               # 3 synthesized noise types
+│   │   ├── engine_hum.wav
+│   │   ├── gunfire_burst.wav
+│   │   └── rotor_wash.wav
+│   └── mixed/                # 12 generated noisy-clean pairs (committed, not gitignored)
+│       ├── speech_00__engine_hum__3dB.wav
+│       ├── speech_00__gunfire_burst__3dB.wav
+│       ├── ... (12 total: 4 speech × 3 noise types, all at 3dB SNR)
+└── src/
+    ├── __init__.py
+    ├── enhance.py          # DeepFilterNet2 wrapper
+    ├── mix_generator.py    # noisy-clean pair generator
+    ├── nlms_filter.py      # classical adaptive filter
+    ├── regime_detector.py  # per-frame noise classifier
+    └── metrics.py          # PESQ / STOI / SNR scoring
 ```
 
 ## How the pieces fit together
