@@ -8,14 +8,28 @@ classical-filter + deep-learning pipeline.
 
 ## Quick start
 
+**Requires Python 3.12** (not 3.13+, not 3.14) — `pyproject.toml` pins this because
+newer Python versions break the pinned scipy/torchaudio combo below. See "Known
+gotchas."
+
 ```bash
 git clone https://github.com/sigmasajan/S.H.I.E.L.D.
 cd S.H.I.E.L.D.
+python3.12 -m venv venv && source venv/bin/activate   # use 3.12 explicitly here
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-Default dashboard password is `shield2026` — it's in `app.py`
+Sample audio is already committed under `data/`, so this runs immediately — no
+dataset download needed. Regenerate or extend it any time with:
+```bash
+python3 generate_sample_data.py
+```
+(needs `espeak-ng` for real synthesized speech — `sudo apt install espeak-ng` /
+`brew install espeak`; falls back to a synthetic tone automatically if it's missing)
+
+Default dashboard password is `shield2026` — it's hardcoded in `app.py`. **Change
+it before this ever goes anywhere public.**
 
 ## Repo structure
 
@@ -56,13 +70,21 @@ S.H.I.E.L.D./
 ## How the pieces fit together
 
 `app.py` classifies incoming audio frame-by-frame (`regime_detector.py`) and routes
-steady-hum frames to the fast classical filter (`nlms_filter.py`) and everything else
-to the AI model (`enhance.py`). `mix_generator.py` and `metrics.py` are used offline
-to build training/test data and to honestly score results (real PESQ/STOI/SNR, not
-claimed numbers).
+steady-hum frames to the fast classical filter (`nlms_filter.py`); everything else —
+and everything by default — goes through the AI model (`enhance.py`). `mix_generator.py`
+and `metrics.py` are used to build test data and to honestly score results (real
+PESQ/STOI/SNR, not claimed numbers). `generate_sample_data.py` exists purely so the
+repo is runnable out of the box without any external dataset download.
 
 ## Known gotchas (full detail in `requirements.txt` comments)
 
+- **Python must be 3.12.x.** On 3.14, `scipy==1.11.4` has no prebuilt wheel and fails
+  to build from source (`Compiler cython cannot compile programs`), and even if you
+  get past that, newer `torchaudio` removes `AudioMetaData`, which DeepFilterNet 0.5.6
+  imports directly — causing `ImportError: cannot import name 'AudioMetaData'`.
+  `pyproject.toml`'s `requires-python` pin exists specifically to prevent this; make
+  sure your venv is actually built with 3.12, since the pin alone doesn't enforce
+  itself under a plain `pip install`.
 - `numpy` is pinned `<2.0` on purpose — DeepFilterNet requires it; this also pins
   `scipy` and `librosa` to older compatible versions.
 - `from df.enhance import ...` needs `torch`/`torchaudio` at runtime even though
