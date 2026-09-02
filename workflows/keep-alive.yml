@@ -10,4 +10,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping the app to reset the inactivity timer
-        run: curl -sSf --max-time 30 https://YOUR-APP-URL.streamlit.app/ > /dev/null
+        run: curl -sSf --max-time 30 https://shield-sih.streamlit.app/ > /dev/null
